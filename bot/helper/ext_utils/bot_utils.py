@@ -80,11 +80,7 @@ def getAllDownload(req_status: str):
     return None
 
 def bt_selection_buttons(id_: str):
-    if len(id_) > 20:
-        gid = id_[:12]
-    else:
-        gid = id_
-
+    gid = id_[:12] if len(id_) > 20 else id_
     pincode = ""
     for n in id_:
         if n.isdigit():
@@ -269,7 +265,7 @@ def get_content_type(link: str) -> str:
             content_type = None
     return content_type
 
-def update_user_ldata(id_: str, key, value):
+def update_user_ldata(id_: int, key, value):
     if id_ in user_data:
         user_data[id_][key] = value
     else:
