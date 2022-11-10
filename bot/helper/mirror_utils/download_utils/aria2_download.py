@@ -1,11 +1,11 @@
 from time import sleep, time
 from os import remove, path as ospath
 
-from bot import aria2, download_dict_lock, download_dict, LOGGER, config_dict
+from bot import aria2, download_dict_lock, download_dict, LOGGER, config_dict, aria2_options, aria2c_global
 from bot.helper.mirror_utils.upload_utils.gdriveTools import GoogleDriveHelper
 from bot.helper.ext_utils.bot_utils import is_magnet, getDownloadByGid, new_thread, bt_selection_buttons
 from bot.helper.mirror_utils.status_utils.aria_download_status import AriaDownloadStatus
-from bot.helper.telegram_helper.message_utils import sendMarkup, sendStatusMessage, sendMessage, deleteMessage, update_all_messages, sendFile
+from bot.helper.telegram_helper.message_utils import sendMarkup, sendStatusMessage, sendMessage, deleteMessage, update_all_messages
 from bot.helper.ext_utils.fs_utils import get_base_name, clean_unwanted
 
 
@@ -49,13 +49,11 @@ def __onDownloadStarted(api, gid):
                     except:
                         sname = None
                 if sname is not None:
-                    cap, f_name = GoogleDriveHelper().drive_list(sname, True)
-                    if cap:
-                        listener.onDownloadError('File/Folder already available in Drive.')
+                    smsg, button = GoogleDriveHelper().drive_list(sname, True)
+                    if smsg:
+                        listener.onDownloadError('File/Folder already available in Drive.\n\n')
                         api.remove([download], force=True, files=True)
-                        cap = f"Here are the search results:\n\n{cap}"
-                        sendFile(listener.bot, listener.message, f_name, cap)
-                        return
+                        return sendMarkup("Here are the search results:", listener.bot, listener.message, button)
     except Exception as e:
         LOGGER.error(f"{e} onDownloadStart: {gid} check duplicate didn't pass")
 
@@ -164,7 +162,10 @@ def start_listener():
                                   timeout=60)
 
 def add_aria2c_download(link: str, path, listener, filename, auth, ratio, seed_time):
-    args = {'dir': path, 'max-upload-limit': '1K'}
+    args = {'dir': path, 'max-upload-limit': '1K', 'netrc-path': '/usr/src/app/.netrc'}
+    a2c_opt = {**aria2_options}
+    [a2c_opt.pop(k) for k in aria2c_global if k in aria2_options]
+    args.update(a2c_opt)
     if filename:
         args['out'] = filename
     if auth:
@@ -173,6 +174,8 @@ def add_aria2c_download(link: str, path, listener, filename, auth, ratio, seed_t
         args['seed-ratio'] = ratio
     if seed_time:
         args['seed-time'] = seed_time
+    if TORRENT_TIMEOUT := config_dict['TORRENT_TIMEOUT']:
+        args['bt-stop-timeout'] = str(TORRENT_TIMEOUT)
     if is_magnet(link):
         download = aria2.add_magnet(link, args)
     else:
