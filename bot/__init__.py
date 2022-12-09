@@ -65,12 +65,12 @@ if len(BOT_TOKEN) == 0:
 
 bot_id = int(BOT_TOKEN.split(':', 1)[0])
 
-DB_URI = environ.get('DATABASE_URL', '')
-if len(DB_URI) == 0:
-    DB_URI = ''
+DATABASE_URL = environ.get('DATABASE_URL', '')
+if len(DATABASE_URL) == 0:
+    DATABASE_URL = ''
 
-if DB_URI:
-    conn = MongoClient(DB_URI)
+if DATABASE_URL:
+    conn = MongoClient(DATABASE_URL)
     db = conn.mltb
     if config_dict := db.settings.config.find_one({'_id': bot_id}):  #retrun config dict (all env vars)
         del config_dict['_id']
@@ -90,6 +90,9 @@ if DB_URI:
         del qbit_opt['_id']
         qbit_options = qbit_opt
     conn.close()
+    BOT_TOKEN = environ.get('BOT_TOKEN', '')
+    bot_id = int(BOT_TOKEN.split(':', 1)[0])
+    DATABASE_URL = environ.get('DATABASE_URL', '')
 else:
     config_dict = {}
 
@@ -120,7 +123,7 @@ DOWNLOAD_DIR = environ.get('DOWNLOAD_DIR', '')
 if len(DOWNLOAD_DIR) == 0:
     DOWNLOAD_DIR = '/usr/src/app/downloads/'
 elif not DOWNLOAD_DIR.endswith("/"):
-    DOWNLOAD_DIR = DOWNLOAD_DIR + '/'
+    DOWNLOAD_DIR = f'{DOWNLOAD_DIR}/'
 
 AUTHORIZED_CHATS = environ.get('AUTHORIZED_CHATS', '')
 if len(AUTHORIZED_CHATS) != 0:
@@ -288,7 +291,10 @@ config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                'AUTHORIZED_CHATS': AUTHORIZED_CHATS,
                'AUTO_DELETE_MESSAGE_DURATION': AUTO_DELETE_MESSAGE_DURATION,
                'BASE_URL': BASE_URL,
+               'BOT_TOKEN': BOT_TOKEN,
                'CMD_PERFIX': CMD_PERFIX,
+               'DATABASE_URL': DATABASE_URL,
+               'DOWNLOAD_DIR': DOWNLOAD_DIR,
                'DUMP_CHAT': DUMP_CHAT,
                'EQUAL_SPLITS': EQUAL_SPLITS,
                'EXTENSION_FILTER': EXTENSION_FILTER,
@@ -302,6 +308,7 @@ config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                'MEGA_API_KEY': MEGA_API_KEY,
                'MEGA_EMAIL_ID': MEGA_EMAIL_ID,
                'MEGA_PASSWORD': MEGA_PASSWORD,
+               'OWNER_ID': OWNER_ID,
                'RSS_USER_SESSION_STRING': RSS_USER_SESSION_STRING,
                'RSS_CHAT_ID': RSS_CHAT_ID,
                'RSS_COMMAND': RSS_COMMAND,
@@ -354,9 +361,13 @@ srun(["chmod", "600", ".netrc"])
 srun(["chmod", "+x", "aria.sh"])
 srun("./aria.sh", shell=True)
 if ospath.exists('accounts.zip'):
-    srun(["unzip", "-q", "-o", "accounts.zip"])
+    if ospath.exists('accounts'):
+        srun(["rm", "-rf", "accounts"])
+    srun(["unzip", "-q", "-o", "accounts.zip", "-x", "accounts/emails.txt"])
     srun(["chmod", "-R", "777", "accounts"])
     osremove('accounts.zip')
+if not ospath.exists('accounts'):
+    config_dict['USE_SERVICE_ACCOUNTS'] = False
 sleep(0.5)
 
 aria2 = ariaAPI(ariaClient(host="http://localhost", port=6800, secret=""))
@@ -372,7 +383,7 @@ def aria2c_init():
         aria2.add_uris([link], {'dir': dire})
         sleep(3)
         downloads = aria2.get_downloads()
-        sleep(20)
+        sleep(15)
         aria2.remove(downloads, force=True, files=True, clean=True)
     except Exception as e:
         log_error(f"Aria2c initializing error: {e}")
@@ -386,15 +397,26 @@ aria2c_global = ['bt-max-open-files', 'download-result', 'keep-unfinished-downlo
 if not aria2_options:
     aria2_options = aria2.client.get_global_option()
     del aria2_options['dir']
-    del aria2_options['max-download-limit']
-    del aria2_options['lowest-speed-limit']
+else:
+    a2c_glo = {}
+    for op in aria2c_global:
+        if op in aria2_options:
+            a2c_glo[op] = aria2_options[op]
+    aria2.set_global_options(a2c_glo)
 
 qb_client = get_client()
 if not qbit_options:
     qbit_options = dict(qb_client.app_preferences())
-    del qbit_options['scan_dirs']
+    del qbit_options['listen_port']
+    for k in list(qbit_options.keys()):
+        if k.startswith('rss'):
+            del qbit_options[k]
 else:
-    qb_client.app_set_preferences(qbit_options)
+    qb_opt = {**qbit_options}
+    for k, v in list(qb_opt.items()):
+        if v in ["", "*"]:
+            del qb_opt[k]
+    qb_client.app_set_preferences(qb_opt)
 
 updater = tgUpdater(token=BOT_TOKEN, request_kwargs={'read_timeout': 20, 'connect_timeout': 15})
 bot = updater.bot
